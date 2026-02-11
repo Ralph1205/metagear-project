@@ -1,42 +1,59 @@
-import { useEffect, useState } from "react";
-import supabase from "../supabase";
 import ProductCard from "./ProductCard";
 
-export default function ProductGrid({ addToCart }) {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchProducts = async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (!error) setProducts(data);
-      setLoading(false);
-    };
-    fetchProducts();
-  }, []);
-
-  if (loading)
-    return (
-      <div className="p-10 text-center font-mono text-white">
-        SCANNING INVENTORY...
-      </div>
-    );
-
+export default function ProductGrid({ products, addToCart, onViewDetails }) {
   return (
-    <section className="px-6 py-12 max-w-7xl mx-auto">
-      <h3 className="text-2xl font-black uppercase mb-8 border-l-4 border-cyan-500 pl-4 text-gray-800">
-        Available Gear
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-        {products.map((item) => (
-          // IMPORTANT: We pass the item as a prop named "product"
-          <ProductCard key={item.id} product={item} addToCart={addToCart} />
+    /* Changed to w-full and removed max-width constraints */
+    <div className="relative w-full min-h-screen overflow-hidden bg-[#050505] py-20 px-4 md:px-10">
+      {/* --- MOVING TACTICAL BACKGROUND LAYER (Now Spans Full Screen) --- */}
+      <div className="absolute inset-0 pointer-events-none">
+        {/* Animated Grid Lines */}
+        <div
+          className="absolute inset-0 opacity-[0.05]"
+          style={{
+            backgroundImage: `linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
+            backgroundSize: "60px 60px",
+            animation: "moveGrid 20s linear infinite",
+          }}
+        />
+        {/* Moving Red Ambient Flare */}
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            background:
+              "radial-gradient(circle at 50% 50%, #dc2626 0%, transparent 50%)",
+            animation: "pulseFlare 12s ease-in-out infinite alternate",
+          }}
+        />
+      </div>
+
+      {/* CSS For Background Animations */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        @keyframes moveGrid {
+          0% { background-position: 0 0; }
+          100% { background-position: 60px 60px; }
+        }
+        @keyframes pulseFlare {
+          0% { transform: translate(-20%, -20%) scale(1); opacity: 0.1; }
+          100% { transform: translate(20%, 20%) scale(1.5); opacity: 0.3; }
+        }
+      `,
+        }}
+      />
+
+      {/* GRID CONTENT - Now using max-w-none to allow full expansion */}
+      <div className="relative z-10 w-full max-w-[1920px] mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+        {products.map((product, index) => (
+          <ProductCard
+            key={product.id}
+            product={product}
+            index={index}
+            addToCart={addToCart}
+            onViewDetails={onViewDetails}
+          />
         ))}
       </div>
-    </section>
+    </div>
   );
 }

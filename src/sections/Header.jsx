@@ -1,132 +1,224 @@
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import supabase from "../supabase";
 
 export default function Header({
   session,
   setPage,
-  cartCount = 0,
+  setDashboardTab,
+  cartCount,
   searchQuery,
-  setSearchQuery, // These allow the header to talk to the rest of the app
+  setSearchQuery,
+  setCart,
 }) {
-  const isAdmin = session?.user?.user_metadata?.role === "admin";
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  // Category List
-  const categories = ["All", "GPU", "Keyboards", "Monitors", "Mice", "Audio"];
+  const isAdmin = session?.user?.email === "admin@metagear.com";
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    await supabase.auth.signOut();
+    setCart([]);
+    setPage("landing");
+    setIsLoggingOut(false);
+    setIsProfileOpen(false);
+  };
+
+  const navigateToDashboard = (tab) => {
+    setDashboardTab(tab);
+    setPage("dashboard");
+    setIsProfileOpen(false);
+  };
 
   return (
-    <header className="border-b bg-white sticky top-0 z-50 shadow-sm">
-      <div className="flex items-center justify-between px-6 py-4 max-w-7xl mx-auto gap-4">
-        {/* Logo Section */}
+    <header className="sticky top-0 z-[100] bg-[#020202] text-white border-b-2 border-red-600/50 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+      {/* GLITCH LINE TOP */}
+      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-red-600 to-transparent opacity-50"></div>
+
+      <div className="max-w-[1440px] mx-auto px-6 h-20 flex items-center justify-between">
+        {/* LOGO SECTION: METAGEAR */}
         <div
-          className="flex items-center gap-2 cursor-pointer min-w-fit transition-opacity hover:opacity-80"
           onClick={() => {
+            setSearchQuery(""); // Clear search when going home
             setPage("home");
-            setSearchQuery(""); // Reset search when clicking logo
           }}
+          className="flex items-center gap-4 cursor-pointer group"
         >
-          <img
-            src="/logo.png"
-            alt="MetaGear Logo"
-            className="w-10 h-10 object-contain"
-          />
-          <h1 className="text-xl font-black uppercase tracking-tighter hidden md:block">
-            MetaGear
-          </h1>
+          <div className="relative w-12 h-12">
+            <div className="absolute inset-0 bg-red-600 rotate-45 opacity-20 group-hover:opacity-40 transition-all duration-500 blur-sm"></div>
+            <div className="relative w-full h-full bg-black border-2 border-red-600 flex items-center justify-center rotate-45 group-hover:rotate-[225deg] transition-all duration-700">
+              <img
+                src="/logoo.png"
+                alt="Logo"
+                className="w-6 h-6 -rotate-45 group-hover:-rotate-[225deg] transition-all duration-700 object-contain"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-[1000] italic tracking-tighter uppercase leading-none">
+              META
+              <span className="text-red-600 group-hover:text-white transition-colors">
+                GEAR
+              </span>
+            </h1>
+            <span className="text-[7px] font-black tracking-[0.5em] text-red-600/60 uppercase">
+              System_Active
+            </span>
+          </div>
         </div>
 
-        {/* FUNCTIONAL SEARCH BAR */}
-        <div className="flex-1 max-w-2xl">
-          <div className="relative group">
-            <span className="absolute inset-y-0 left-3 flex items-center text-gray-400">
+        {/* SEARCH LOADOUT: Tactical Input */}
+        <div className="hidden md:flex flex-1 max-w-md mx-8 relative group">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-red-600 z-10 group-focus-within:scale-110 transition-transform">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="3"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+          <input
+            type="text"
+            placeholder="SEARCH_LOADOUT..."
+            className="w-full bg-neutral-900/50 border border-neutral-800 rounded-sm px-12 py-2 text-[10px] font-black tracking-[0.2em] focus:outline-none focus:border-red-600 focus:bg-black transition-all placeholder:text-neutral-700 uppercase"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1">
+            <span className="w-1 h-1 bg-red-600 animate-pulse"></span>
+            <span className="w-1 h-1 bg-red-600 animate-pulse delay-75"></span>
+          </div>
+        </div>
+
+        {/* ACTIONS & AUTH */}
+        <nav className="flex items-center gap-4">
+          {!isAdmin && (
+            <button
+              onClick={() => setPage("cart")}
+              className="relative p-2.5 bg-neutral-900 border border-neutral-800 hover:border-red-600 transition-all group"
+            >
               <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
+                className="w-5 h-5 text-white"
                 fill="none"
-                viewBox="0 0 24 24"
                 stroke="currentColor"
+                viewBox="0 0 24 24"
               >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  strokeWidth="2"
+                  d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
                 />
               </svg>
-            </span>
-            <input
-              type="text"
-              placeholder="Search loadout..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full border-2 border-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none focus:border-black bg-gray-50 transition-all font-medium"
-            />
-          </div>
-        </div>
-
-        {/* Actions Section */}
-        <div className="flex items-center gap-6">
-          {isAdmin && (
-            <button
-              onClick={() => setPage("admin")}
-              className="text-[10px] uppercase font-black text-red-500 hover:bg-red-50 px-2 py-1 rounded transition-colors tracking-widest"
-            >
-              Admin
+              {cartCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[9px] font-black w-5 h-5 flex items-center justify-center rounded-full border border-black shadow-[0_0_10px_#ff0000]">
+                  {cartCount}
+                </span>
+              )}
             </button>
           )}
 
-          <button
-            onClick={() => setPage("cart")}
-            className="relative flex items-center hover:scale-110 transition-transform"
-          >
-            <img
-              src="/cart.png"
-              alt="Cart"
-              className="w-8 h-8 object-contain"
-            />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-cyan-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded-full border-2 border-white">
-                {cartCount}
-              </span>
-            )}
-          </button>
-
           {session ? (
-            <button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                setPage("home");
-              }}
-              className="text-xs font-black uppercase tracking-widest hover:text-cyan-600 transition-colors"
-            >
-              Logout
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className={`flex items-center gap-3 bg-neutral-900/50 border p-1.5 pr-4 rounded-sm transition-all ${isAdmin ? "border-red-600 shadow-[0_0_10px_rgba(220,38,38,0.2)]" : "border-neutral-800 hover:border-red-600"}`}
+              >
+                <div
+                  className={`w-8 h-8 flex items-center justify-center font-black text-[10px] ${isAdmin ? "bg-red-600 text-white" : "bg-white text-black"}`}
+                >
+                  {isAdmin ? "OP" : session.user.email[0].toUpperCase()}
+                </div>
+                <div className="text-left hidden lg:block">
+                  <p className="text-[6px] font-black text-red-600 uppercase tracking-tighter leading-none">
+                    {isAdmin ? "ROOT_ACCESS" : "OPERATOR"}
+                  </p>
+                  <p className="text-[10px] font-black uppercase text-white truncate max-w-[80px]">
+                    {isAdmin ? "ADMIN" : session.user.email.split("@")[0]}
+                  </p>
+                </div>
+              </button>
+
+              <AnimatePresence>
+                {isProfileOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setIsProfileOpen(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 5 }}
+                      className="absolute right-0 mt-3 w-56 bg-black border border-red-600 shadow-[0_20px_40px_rgba(0,0,0,0.9)] rounded-sm overflow-hidden z-20"
+                    >
+                      <div className="p-4 border-b border-neutral-900">
+                        <p className="text-[7px] font-black text-red-600 uppercase tracking-widest mb-1">
+                          DATA_STREAM_ENCRYPTED
+                        </p>
+                        <p className="text-[10px] font-bold text-neutral-400 truncate">
+                          {session.user.email}
+                        </p>
+                      </div>
+
+                      <div className="p-1">
+                        {isAdmin ? (
+                          <button
+                            onClick={() => {
+                              setPage("admin");
+                              setIsProfileOpen(false);
+                            }}
+                            className="w-full flex items-center justify-between p-3 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 transition-all"
+                          >
+                            DASHBOARD_CORE <span>[SECURE]</span>
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => navigateToDashboard("profile")}
+                              className="w-full text-left p-3 text-[9px] font-black uppercase tracking-widest text-neutral-400 hover:text-white hover:bg-neutral-900 transition-all"
+                            >
+                              PERSONNEL_FILE
+                            </button>
+                            <button
+                              onClick={() => navigateToDashboard("manifests")}
+                              className="w-full text-left p-3 text-[9px] font-black uppercase tracking-widest text-neutral-400 hover:text-white hover:bg-neutral-900 transition-all"
+                            >
+                              ORDER_MANIFESTS
+                            </button>
+                          </>
+                        )}
+                        <div className="h-[1px] bg-neutral-900 my-1" />
+                        <button
+                          onClick={handleLogout}
+                          disabled={isLoggingOut}
+                          className="w-full p-3 text-red-600 hover:bg-red-600 hover:text-white text-[9px] font-black uppercase tracking-widest transition-all"
+                        >
+                          {isLoggingOut ? "TERMINATING..." : "ABORT_SESSION"}
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
           ) : (
             <button
               onClick={() => setPage("login")}
-              className="bg-black text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-cyan-500 hover:text-black transition-all"
+              className="bg-red-600 text-white px-6 py-2 text-[10px] font-[1000] uppercase tracking-widest hover:bg-white hover:text-black transition-all shadow-[0_0_15px_rgba(220,38,38,0.3)]"
             >
-              Login
+              INITIALIZE_LOGIN
             </button>
           )}
-        </div>
-      </div>
-
-      {/* NEW: FUNCTIONAL CATEGORY BAR */}
-      <div className="bg-gray-50 border-t overflow-x-auto">
-        <div className="max-w-7xl mx-auto px-6 flex gap-8 py-2 justify-center">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSearchQuery(cat === "All" ? "" : cat)}
-              className={`text-[10px] font-black uppercase tracking-[0.2em] transition-all pb-1 border-b-2 ${
-                searchQuery === cat || (cat === "All" && searchQuery === "")
-                  ? "border-cyan-500 text-black"
-                  : "border-transparent text-gray-400 hover:text-black"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
+        </nav>
       </div>
     </header>
   );

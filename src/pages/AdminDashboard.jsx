@@ -3,261 +3,480 @@ import supabase from "../supabase";
 
 export default function AdminDashboard({ setPage }) {
   const [products, setProducts] = useState([]);
-  const [adminSearch, setAdminSearch] = useState(""); // NEW: Search State
+  const [orders, setOrders] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [view, setView] = useState("inventory");
   const [loading, setLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
+
+  // States for Editing, Search, and Filtering
+  const [editingId, setEditingId] = useState(null);
+  const [adminSearch, setAdminSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState("ALL");
+  const [selectedAgent, setSelectedAgent] = useState(null); // New state for filtering by agent
+
+  const categories = [
+    "Laptop",
+    "MotherBoards",
+    "GrapicCards",
+    "Cooling",
+    "Phones",
+    "Monitors",
+    "Mouse",
+    "CPU",
+  ];
+
   const [formData, setFormData] = useState({
     name: "",
     price: "",
     description: "",
     image_url: "",
+    category: "Laptop",
   });
-
-  const SECRET_ADMIN_EMAIL = "admin@metagear.com";
 
   useEffect(() => {
     const checkAuth = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user?.email !== SECRET_ADMIN_EMAIL) {
-        alert("ACCESS DENIED");
+      if (user?.email !== "admin@metagear.com") {
         setPage("home");
       } else {
         setIsAuthorized(true);
-        fetchProducts();
+        fetchData();
       }
     };
     checkAuth();
-  }, [setPage]);
+  }, [setPage, view]);
 
-  const fetchProducts = async () => {
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (!error) setProducts(data);
-  };
-
-  // NEW: Search Filter Logic
-  const filteredInventory = products.filter(
-    (item) =>
-      item.name.toLowerCase().includes(adminSearch.toLowerCase()) ||
-      item.id.toString().includes(adminSearch),
-  );
-
-  const massGenerate = async () => {
-    if (!window.confirm("Deploy 10 random hardware units?")) return;
-    setLoading(true);
-    const brands = ["ASUS", "MSI", "Razer", "Corsair", "Logitech"];
-    const types = ["GPU", "Keyboard", "Monitor", "Mouse", "Headset"];
-
-    const newItems = Array.from({ length: 10 }).map(() => ({
-      name: `${brands[Math.floor(Math.random() * 5)]} ${types[Math.floor(Math.random() * 5)]} Pro`,
-      price: Math.floor(Math.random() * 50000) + 5000,
-      description: "High-performance gaming equipment.",
-      image_url: `https://picsum.photos/seed/${Math.floor(Math.random() * 100) + 200}/800/600`,
-    }));
-
-    const { error } = await supabase.from("products").insert(newItems);
-    if (!error) fetchProducts();
-    setLoading(false);
-  };
-
-  const updatePrice = async (id, currentPrice) => {
-    const newPrice = prompt("Update Price (PHP):", currentPrice);
-    if (newPrice && !isNaN(newPrice)) {
-      const { error } = await supabase
+  const fetchData = async () => {
+    if (view === "inventory") {
+      const { data } = await supabase
         .from("products")
-        .update({ price: parseFloat(newPrice) })
-        .eq("id", id);
-      if (!error) fetchProducts();
-    }
-  };
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (data) setProducts(data);
+    } else {
+      const { data: orderData } = await supabase
+        .from("orders")
+        .select(
+          `
+          *,
+          profiles(email),
+          order_items(
+            quantity,
+            products(name, price)
+          )
+        `,
+        )
+        .order("created_at", { ascending: false });
+      if (orderData) setOrders(orderData);
 
-  const removeProduct = async (id) => {
-    if (window.confirm("Delete this unit?")) {
-      const { error } = await supabase.from("products").delete().eq("id", id);
-      if (!error) fetchProducts();
+      const { data: userData } = await supabase.from("profiles").select("*");
+      if (userData) setUsers(userData);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase
-      .from("products")
-      .insert([{ ...formData, price: parseFloat(formData.price) }]);
-    if (!error) {
-      setFormData({ name: "", price: "", description: "", image_url: "" });
-      fetchProducts();
+    const payload = { ...formData, price: parseFloat(formData.price) };
+
+    try {
+      let result = editingId
+        ? await supabase.from("products").update(payload).eq("id", editingId)
+        : await supabase.from("products").insert([payload]);
+
+      if (result.error) {
+        alert(`DB ERROR: ${result.error.message}`);
+      } else {
+        setEditingId(null);
+        setFormData({
+          name: "",
+          price: "",
+          description: "",
+          image_url: "",
+          category: "Laptop",
+        });
+        fetchData();
+      }
+    } catch (err) {
+      alert("System error.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
+
+  const handleEdit = (product) => {
+    setEditingId(product.id);
+    setFormData({
+      name: product.name,
+      price: product.price.toString(),
+      description: product.description || "",
+      image_url: product.image_url,
+      category: product.category,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch = p.name
+      .toLowerCase()
+      .includes(adminSearch.toLowerCase());
+    const matchesCat = activeFilter === "ALL" || p.category === activeFilter;
+    return matchesSearch && matchesCat;
+  });
+
+  // Filter orders based on the clicked agent
+  const displayOrders = selectedAgent
+    ? orders.filter((o) => o.profiles?.email === selectedAgent)
+    : orders;
 
   if (!isAuthorized) return null;
 
   return (
-    <div className="max-w-7xl mx-auto p-8 min-h-screen bg-white">
-      {/* Header & Stats */}
-      <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6 border-b-8 border-black pb-8">
-        <div>
-          <h1 className="text-6xl font-black uppercase italic tracking-tighter leading-none">
-            Command Center
-          </h1>
-          <div className="flex gap-4 mt-4 text-[10px] font-mono uppercase tracking-widest text-gray-500">
-            <span>Stock: {products.length}</span>
-            <span>•</span>
-            <span>
-              Value: ₱
-              {products
-                .reduce((acc, curr) => acc + (curr.price || 0), 0)
-                .toLocaleString()}
-            </span>
+    <div className="min-h-screen bg-black text-white p-8 font-sans selection:bg-red-600">
+      <div className="max-w-7xl mx-auto">
+        <header className="flex justify-between items-center mb-12 border-b border-red-600/30 pb-6">
+          <div className="flex items-center gap-8">
+            <h1 className="text-4xl font-[1000] italic uppercase tracking-tighter text-white">
+              COMMAND_<span className="text-red-600">CENTER</span>
+            </h1>
+            <nav className="flex gap-2">
+              <button
+                onClick={() => setView("inventory")}
+                className={`px-6 py-2 text-[10px] font-black border transition-all ${view === "inventory" ? "bg-red-600 border-red-600 text-white" : "border-neutral-800 text-neutral-500 hover:text-white"}`}
+              >
+                ASSET_INV
+              </button>
+              <button
+                onClick={() => setView("intel")}
+                className={`px-6 py-2 text-[10px] font-black border transition-all ${view === "intel" ? "bg-red-600 border-red-600 text-white" : "border-neutral-800 text-neutral-500 hover:text-white"}`}
+              >
+                INTEL_OPS
+              </button>
+            </nav>
           </div>
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={massGenerate}
-            className="bg-cyan-400 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-black hover:text-white transition-all"
-          >
-            + Quick Deploy
-          </button>
           <button
             onClick={() => setPage("home")}
-            className="bg-black text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest"
+            className="text-[10px] font-black border border-red-600/50 px-6 py-2 hover:bg-red-600 transition-all uppercase"
           >
-            Exit System
+            Exit_System
           </button>
-        </div>
-      </div>
+        </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-        {/* Form Column */}
-        <section className="bg-gray-50 p-8 rounded-[40px] border-2 border-gray-100 h-fit sticky top-8">
-          <h2 className="text-xl font-black mb-6 uppercase">
-            Register New Unit
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              placeholder="Name"
-              className="w-full p-4 rounded-xl border-2 font-bold focus:border-cyan-500 outline-none"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              required
-            />
-            <input
-              placeholder="Image URL"
-              className="w-full p-4 rounded-xl border-2 focus:border-cyan-500 outline-none"
-              value={formData.image_url}
-              onChange={(e) =>
-                setFormData({ ...formData, image_url: e.target.value })
-              }
-              required
-            />
-            <input
-              type="number"
-              placeholder="Price"
-              className="w-full p-4 rounded-xl border-2 font-black"
-              value={formData.price}
-              onChange={(e) =>
-                setFormData({ ...formData, price: e.target.value })
-              }
-              required
-            />
-            <textarea
-              placeholder="Description"
-              className="w-full p-4 rounded-xl border-2 h-24 resize-none"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-            />
-            <button className="w-full bg-black text-white font-black py-4 rounded-2xl uppercase tracking-widest hover:bg-cyan-500 hover:text-black transition-all">
-              {loading ? "Syncing..." : "Deploy Unit"}
-            </button>
-          </form>
-        </section>
-
-        {/* Inventory Column */}
-        <section className="lg:col-span-2">
-          {/* SEARCH BOX FUNCTIONALITY */}
-          <div className="mb-8 relative">
-            <input
-              type="text"
-              placeholder="SEARCH INVENTORY BY NAME OR UID..."
-              className="w-full p-6 bg-gray-100 rounded-3xl border-none outline-none font-black text-lg focus:ring-4 ring-cyan-500/20 transition-all uppercase placeholder:text-gray-300"
-              value={adminSearch}
-              onChange={(e) => setAdminSearch(e.target.value)}
-            />
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-400 font-mono text-xs">
-              {filteredInventory.length} Matches
-            </div>
-          </div>
-
-          <div className="grid gap-4 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar">
-            {filteredInventory.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between p-4 bg-white border-2 border-gray-100 rounded-3xl hover:border-black group transition-all"
+        {view === "inventory" ? (
+          <div className="grid lg:grid-cols-4 gap-8">
+            {/* INVENTORY FORM */}
+            <div className="lg:col-span-1">
+              <form
+                onSubmit={handleSubmit}
+                className={`space-y-4 p-6 border transition-all sticky top-8 ${editingId ? "bg-red-600/5 border-red-600" : "bg-neutral-900/20 border-neutral-800"}`}
               >
-                <div className="flex items-center gap-5">
-                  <img
-                    src={item.image_url}
-                    className="w-16 h-16 object-cover rounded-2xl bg-gray-50 shadow-sm"
-                    alt=""
-                  />
-                  <div>
-                    <h3 className="font-black uppercase text-sm leading-tight">
-                      {item.name}
-                    </h3>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="text-cyan-600 font-black text-xs">
-                        ₱{item.price.toLocaleString()}
-                      </span>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-red-600 font-black text-[10px] uppercase tracking-[0.3em]">
+                    {editingId ? "MODE: EDIT_ASSET" : "Deploy_New_Unit"}
+                  </h2>
+                  <div
+                    className={`w-2 h-2 rounded-full ${editingId ? "bg-yellow-500 animate-pulse" : "bg-red-600"}`}
+                  ></div>
+                </div>
+
+                <select
+                  className="w-full bg-black border border-neutral-800 p-3 text-xs font-bold focus:border-red-600 outline-none text-red-500"
+                  value={formData.category}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
+                >
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  required
+                  placeholder="MODEL_NAME"
+                  className="w-full bg-black border border-neutral-800 p-3 text-xs font-bold focus:border-red-600 outline-none"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                />
+                <input
+                  required
+                  type="number"
+                  placeholder="PRICE (PHP)"
+                  className="w-full bg-black border border-neutral-800 p-3 text-xs font-bold focus:border-red-600 outline-none"
+                  value={formData.price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, price: e.target.value })
+                  }
+                />
+                <input
+                  required
+                  placeholder="IMAGE_URL"
+                  className="w-full bg-black border border-neutral-800 p-3 text-xs font-mono focus:border-red-600 outline-none"
+                  value={formData.image_url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, image_url: e.target.value })
+                  }
+                />
+                <textarea
+                  placeholder="TECH_SPECS"
+                  className="w-full bg-black border border-neutral-800 p-3 text-xs font-bold h-24 focus:border-red-600 outline-none"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                />
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 bg-red-600 font-[1000] uppercase text-[10px] tracking-[0.3em] hover:bg-red-700 transition-all shadow-[0_0_15px_rgba(220,38,38,0.3)]"
+                >
+                  {loading
+                    ? "COMMUNICATING..."
+                    : editingId
+                      ? "SAVE_CHANGES"
+                      : "CONFIRM_DEPLOYMENT"}
+                </button>
+
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingId(null);
+                      setFormData({
+                        name: "",
+                        price: "",
+                        description: "",
+                        image_url: "",
+                        category: "Laptop",
+                      });
+                    }}
+                    className="w-full py-2 text-[9px] font-black text-neutral-500 uppercase hover:text-white transition-all"
+                  >
+                    Cancel_Edit
+                  </button>
+                )}
+              </form>
+            </div>
+
+            {/* INVENTORY LIST */}
+            <div className="lg:col-span-3 space-y-6">
+              <div className="bg-neutral-900/40 border border-neutral-800 p-4 space-y-4">
+                <input
+                  type="text"
+                  placeholder="// FILTER_DATABASE..."
+                  className="w-full bg-black border border-neutral-800 p-3 text-xs font-bold outline-none focus:border-red-600"
+                  value={adminSearch}
+                  onChange={(e) => setAdminSearch(e.target.value)}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setActiveFilter("ALL")}
+                    className={`px-3 py-1 text-[9px] font-black border transition-all ${activeFilter === "ALL" ? "bg-white text-black border-white" : "border-neutral-800 text-neutral-500"}`}
+                  >
+                    ALL
+                  </button>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveFilter(cat)}
+                      className={`px-3 py-1 text-[9px] font-black border transition-all ${activeFilter === cat ? "bg-red-600 border-red-600 text-white" : "border-neutral-800 text-neutral-500"}`}
+                    >
+                      {cat.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                {filteredProducts.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between p-4 bg-neutral-900/10 border border-neutral-800 hover:border-red-600/40 transition-all group"
+                  >
+                    <div className="flex items-center gap-6">
+                      <div className="w-14 h-14 bg-black border border-neutral-800 p-1">
+                        <img
+                          src={item.image_url}
+                          className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all"
+                          alt=""
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[8px] px-1.5 py-0.5 bg-red-600/10 text-red-500 border border-red-600/20 font-bold">
+                            {item.category}
+                          </span>
+                          <h3 className="font-black text-sm uppercase">
+                            {item.name}
+                          </h3>
+                        </div>
+                        <p className="text-red-600 font-mono text-xs">
+                          ₱{item.price?.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-4">
                       <button
-                        onClick={() => updatePrice(item.id, item.price)}
-                        className="text-[9px] font-bold text-gray-400 hover:text-black border-b border-transparent hover:border-black"
+                        onClick={() => handleEdit(item)}
+                        className="text-[9px] font-black text-white/40 hover:text-white transition-all uppercase"
                       >
-                        EDIT PRICE
+                        Edit_Asset
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (confirm("ERASE?")) {
+                            await supabase
+                              .from("products")
+                              .delete()
+                              .eq("id", item.id);
+                            fetchData();
+                          }
+                        }}
+                        className="text-[9px] font-black text-neutral-700 hover:text-red-600 transition-all uppercase"
+                      >
+                        Remove
                       </button>
                     </div>
                   </div>
-                </div>
-
-                <button
-                  onClick={() => removeProduct(item.id)}
-                  className="p-3 text-gray-200 hover:text-red-500 transition-colors"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                </button>
+                ))}
               </div>
-            ))}
-
-            {filteredInventory.length === 0 && (
-              <div className="text-center py-20 bg-gray-50 rounded-[40px] border-2 border-dashed border-gray-200">
-                <p className="font-black text-gray-300 uppercase tracking-widest text-sm text-center px-10">
-                  No Gear Found Matching "{adminSearch}"
-                </p>
-              </div>
-            )}
+            </div>
           </div>
-        </section>
+        ) : (
+          /* INTEL_OPS VIEW */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            {/* REGISTERED AGENTS SIDEBAR */}
+            <div className="lg:col-span-4">
+              <div className="flex justify-between items-center mb-6 border-l-2 border-red-600 pl-4">
+                <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500">
+                  Registered_Agents
+                </h2>
+                {selectedAgent && (
+                  <button
+                    onClick={() => setSelectedAgent(null)}
+                    className="text-[8px] font-black bg-neutral-800 px-2 py-1 hover:bg-red-600 transition-all uppercase"
+                  >
+                    Show_All_Manifests
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                {users.map((u) => (
+                  <div
+                    key={u.id}
+                    onClick={() => setSelectedAgent(u.email)}
+                    className={`p-4 border cursor-pointer transition-all ${selectedAgent === u.email ? "bg-red-600/10 border-red-600" : "bg-neutral-900/40 border-neutral-800 hover:border-neutral-600"}`}
+                  >
+                    <p className="text-[8px] font-mono text-neutral-500 uppercase mb-1">
+                      Agent_ID: {String(u.id).slice(0, 8)}
+                    </p>
+                    <p className="text-sm font-black uppercase">{u.email}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ORDER MANIFESTS VIEW */}
+            <div className="lg:col-span-8">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500 mb-6 border-l-2 border-red-600 pl-4">
+                {selectedAgent
+                  ? `Manifests_For: ${selectedAgent}`
+                  : "Order_Manifests"}
+              </h2>
+              <div className="space-y-3">
+                {displayOrders.length > 0 ? (
+                  displayOrders.map((o) => {
+                    // Logic: Est. Delivery is 3 days after created_at
+                    const deliveryDate = new Date(o.created_at);
+                    deliveryDate.setDate(deliveryDate.getDate() + 3);
+
+                    return (
+                      <div
+                        key={o.id}
+                        className="flex flex-col p-5 bg-neutral-900/20 border-l-4 border-red-600 border-r border-t border-b border-neutral-800"
+                      >
+                        <div className="flex justify-between items-start w-full">
+                          <div>
+                            <p className="text-[9px] font-black text-white/30 uppercase tracking-widest">
+                              ORD_{String(o.id).slice(0, 12)}
+                            </p>
+                            <h3 className="text-sm font-black uppercase mt-1">
+                              {o.profiles?.email}
+                            </h3>
+                            <div className="flex gap-4 mt-3">
+                              <span className="text-[9px] px-2 py-0.5 bg-red-600 text-white font-black uppercase">
+                                {o.status}
+                              </span>
+                              <div className="flex flex-col">
+                                <span className="text-[7px] text-neutral-500 uppercase font-black">
+                                  Ordered
+                                </span>
+                                <span className="text-[10px] text-neutral-300 font-bold">
+                                  {new Date(o.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <div className="flex flex-col border-l border-neutral-800 pl-3">
+                                <span className="text-[7px] text-red-500 uppercase font-black">
+                                  Est_Delivery
+                                </span>
+                                <span className="text-[10px] text-white font-bold">
+                                  {deliveryDate.toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-[1000] italic text-white">
+                              ₱{o.total_price?.toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-neutral-800/50">
+                          <p className="text-[8px] font-black text-red-600 uppercase tracking-widest mb-2">
+                            Manifest_Items:
+                          </p>
+                          <div className="space-y-1">
+                            {o.order_items?.map((item, idx) => (
+                              <div
+                                key={idx}
+                                className="flex justify-between text-[10px] uppercase font-bold text-neutral-400"
+                              >
+                                <span>
+                                  {item.quantity}x {item.products?.name}
+                                </span>
+                                <span>
+                                  ₱
+                                  {(
+                                    item.products?.price * item.quantity
+                                  ).toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-12 border border-dashed border-neutral-800 flex items-center justify-center">
+                    <p className="text-neutral-700 font-black text-[10px] uppercase tracking-widest">
+                      No_Manifests_Found
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
